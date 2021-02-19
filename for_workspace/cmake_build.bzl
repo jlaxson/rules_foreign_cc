@@ -14,7 +14,7 @@ def _cmake_tool(ctx):
         "##mkdirs## " + cmake.path,
         "cd $$BUILD_TMPDIR$$",
         "./bootstrap --prefix=install",
-        "make install",
+        "make install -j16",
         "##copy_dir_contents_to_dir## ./install $BUILD_DIR/" + cmake.path,
         "cd $$BUILD_DIR$$",
     ]

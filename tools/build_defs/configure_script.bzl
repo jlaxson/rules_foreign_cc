@@ -49,7 +49,7 @@ def create_configure_script(
     if configure_in_place:
         script.append("##symlink_contents_to_dir## $$EXT_BUILD_ROOT$$/{} $$BUILD_TMPDIR$$".format(root))
         root_path = "$$BUILD_TMPDIR$$"
-        configure_path = "{}/{}".format(root_path, configure_command)
+        configure_path = "{1}".format(root_path, configure_command)
 
     if autogen and configure_in_place:
         # NOCONFIGURE is pseudo standard and tells the script to not invoke configure.
@@ -74,11 +74,14 @@ def create_configure_script(
             " ".join(autoreconf_options),
         ).lstrip())
 
-    script.append("{env_vars} \"{configure}\" --prefix=$$BUILD_TMPDIR$$/$$INSTALL_PREFIX$$ {user_options}".format(
+    #print(user_options)
+
+    script.append("{env_vars} \\\n\"{configure}\" --prefix=$$BUILD_TMPDIR$$/$$INSTALL_PREFIX$$ {user_options}".format(
         env_vars = env_vars_string,
         configure = configure_path,
         user_options = " ".join(user_options),
     ))
+    #print(script)
     return "\n".join(script)
 
 # buildifier: disable=function-docstring
@@ -122,7 +125,7 @@ def get_env_vars(
     # https://www.gnu.org/software/autoconf/manual/autoconf-2.63/html_node/Preset-Output-Variables.html
     vars["CPPFLAGS"] = deps_flags.flags
 
-    return " ".join(["{}=\"{}\""
+    return " \\\n".join(["{}=\"{}\""
         .format(key, _join_flags_list(workspace_name, vars[key])) for key in vars])
 
 def _get_autogen_env_vars(autogen_env_vars):
@@ -215,6 +218,10 @@ def _get_configure_variables(tools, flags, user_env_vars):
         tool_value = getattr(tools, _CONFIGURE_TOOLS[tool])
         if tool_value:
             tools_dict[tool] = [tool_value]
+
+    #print(_CONFIGURE_TOOLS)
+    #print(tools)
+    #print(tools_dict)
 
     # Replace tools paths if user passed other values
     for user_var in user_env_vars:

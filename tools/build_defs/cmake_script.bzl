@@ -224,8 +224,8 @@ def _fill_crossfile_from_toolchain(workspace_name, target_os, tools, flags):
     }
 
     _sysroot = _find_in_cc_or_cxx(flags, "sysroot")
-    if _sysroot:
-        dict["CMAKE_SYSROOT"] = _absolutize(workspace_name, _sysroot)
+    # if _sysroot:
+    #     dict["CMAKE_SYSROOT"] = _absolutize(workspace_name, _sysroot)
 
     _ext_toolchain_cc = _find_flag_value(flags.cc, "gcc_toolchain")
     if _ext_toolchain_cc:

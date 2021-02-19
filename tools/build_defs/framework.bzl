@@ -23,6 +23,7 @@ load(
     "get_env_vars",
     "targets_windows",
 )
+load("@rules_cc//examples:experimental_cc_shared_library.bzl", "CcSharedLibraryInfo")
 
 # Dict with definitions of the context attributes, that customize cc_external_rule_impl function.
 # Many of the attributes have default values.
@@ -79,7 +80,18 @@ CC_EXTERNAL_RULE_ATTRIBUTES = {
         doc = (
             "Optional dependencies to be copied into the directory structure. " +
             "Typically those directly required for the external building of the library/binaries. " +
-            "(i.e. those that the external buidl system will be looking for and paths to which are " +
+            "(i.e. those that the external build system will be looking for and paths to which are " +
+            "provided by the calling rule)"
+        ),
+        mandatory = False,
+        allow_files = True,
+        default = [],
+    ),
+    "dynamic_deps": attr.label_list(
+        doc = (
+            "Optional dependencies to be copied into the directory structure. " +
+            "Typically those directly required for the external building of the library/binaries. " +
+            "(i.e. those that the external build system will be looking for and paths to which are " +
             "provided by the calling rule)"
         ),
         mandatory = False,
@@ -151,6 +163,11 @@ CC_EXTERNAL_RULE_ATTRIBUTES = {
         doc = "Optional name of the output subdirectory with the library files, defaults to 'lib'.",
         mandatory = False,
         default = "lib",
+    ),
+    "out_data_dirs": attr.string_list(
+        doc = "Optional name of the output subdirectories with runtime files needed by the generated libraries.",
+        mandatory = False,
+        default = [],
     ),
     "postfix_script": attr.string(
         doc = "Optional part of the shell script to be added after the make commands",
@@ -228,6 +245,7 @@ Instances of ForeignCcArtifact are incapsulated in a depset ForeignCcDeps#artifa
         "gen_dir": "Install directory",
         "include_dir_name": "Include directory, relative to install directory",
         "lib_dir_name": "Lib directory, relative to install directory",
+        "data_dir_names": "Data directories, relative to install directory"
     },
 )
 
@@ -412,6 +430,7 @@ def cc_external_rule_impl(ctx, attrs):
         bin_dir_name = attrs.out_bin_dir,
         lib_dir_name = attrs.out_lib_dir,
         include_dir_name = attrs.out_include_dir,
+        data_dir_names = attrs.out_data_dirs
     )
     output_groups = _declare_output_groups(installdir_copy.file, outputs.out_binary_files)
     wrapped_files = [
@@ -420,6 +439,15 @@ def cc_external_rule_impl(ctx, attrs):
         wrapped_outputs.wrapper_script_file,
     ]
     output_groups[attrs.configure_name + "_logs"] = wrapped_files
+
+    for target in rule_outputs:
+        output_groups[target.basename] = [target]
+
+    output_groups["headers"] = [outputs.out_include_dir]
+
+    #print(rule_outputs)
+    #print(wrapped_files)
+    #print(output_groups)
     return [
         DefaultInfo(
             files = depset(direct = rule_outputs),
@@ -552,10 +580,26 @@ def _list(item):
         return [item]
     return []
 
+# def _symlink_contents_with_prefix(base, headers, prefixes):
+#     prefix_map = {}
+
+#     for h in headers:
+#         print(h)
+#         for p in prefixes:
+#             if h.path.startswith(p):
+#                 print(h.path, p)
+
+#     lines = []
+#     for prefix, headers in enumerate(prefix_map):
+#         lines += _symlink_contents_to_dir(base + "/" + prefix, headers)
+#     return lines
+
 def _copy_deps_and_tools(files):
     lines = []
     lines += _symlink_contents_to_dir("lib", files.libs)
-    lines += _symlink_contents_to_dir("include", files.headers + files.include_dirs)
+    lines += _symlink_contents_to_dir("include", files.include_dirs)
+    lines += _symlink_to_dir("include", files.headers)
+    # lines += _symlink_contents_with_prefix("include", files.headers, files.include_dirs)
 
     if files.tools_files:
         lines.append("##mkdirs## $$EXT_BUILD_DEPS$$/bin")
@@ -583,6 +627,24 @@ def _symlink_contents_to_dir(dir_name, files_list):
         if path:
             lines.append("##symlink_contents_to_dir## \
 $$EXT_BUILD_ROOT$$/{} $$EXT_BUILD_DEPS$$/{}".format(path, dir_name))
+
+    return lines
+
+def _symlink_to_dir(dir_name, files_list):
+    # It is possible that some duplicate libraries will be passed as inputs
+    # to cmake_external or configure_make. Filter duplicates out here.
+    files_list = collections.uniq(files_list)
+    if len(files_list) == 0:
+        return []
+    lines = ["##mkdirs## $$EXT_BUILD_DEPS$$/" + dir_name]
+
+    for file in files_list:
+        path = _file_path(file).strip()
+        fixed_short = "/".join(file.short_path.split("/")[2:-1])
+        # print(file, file.root.path, file.short_path, fixed_short)
+        if path:
+            lines.append("##symlink_to_dir## \
+$$EXT_BUILD_ROOT$$/{} $$EXT_BUILD_DEPS$$/{}/{}".format(path, dir_name, fixed_short))
 
     return lines
 
@@ -686,18 +748,34 @@ def _define_inputs(attrs):
     # $EXT_BUILD_DEPS/lib-name
     ext_build_dirs = []
 
-    for dep in attrs.deps:
+    deps = list(attrs.deps) + list(attrs.dynamic_deps)
+
+    # for dynamic_dep in attrs.dynamic_deps:
+        # print(dynamic_dep)
+        # print(dynamic_dep[CcInfo].linking_context)
+        # deps += [Target(name) for name in dynamic_dep[CcSharedLibraryInfo].exports]
+
+    # print(deps)
+
+    for dep in deps:
         external_deps = get_foreign_cc_dep(dep)
 
         cc_infos.append(dep[CcInfo])
+
 
         if external_deps:
             ext_build_dirs += [artifact.gen_dir for artifact in external_deps.artifacts.to_list()]
         else:
             headers_info = _get_headers(dep[CcInfo].compilation_context)
+            # print(dep, headers_info)
             bazel_headers += headers_info.headers
             bazel_system_includes += headers_info.include_dirs
             bazel_libs += _collect_libs(dep[CcInfo].linking_context)
+            # print(dep, dep[CcInfo].linking_context)
+
+    # print(bazel_libs)
+    # print(bazel_headers)
+    # print(bazel_system_includes)
 
     # Keep the order of the transitive foreign dependencies
     # (the order is important for the correct linking),
@@ -713,6 +791,9 @@ def _define_inputs(attrs):
         for file_list in tool.files.to_list():
             tools_files += _list(file_list)
 
+    # print("tools files " + str(tools_files))
+    # print("tools roots " + str(tools_roots))
+
     for tool in attrs.additional_tools:
         for file_list in tool.files.to_list():
             tools_files += _list(file_list)
@@ -724,7 +805,7 @@ def _define_inputs(attrs):
     # These variables are needed for correct C/C++ providers constraction,
     # they should contain all libraries and include directories.
     cc_info_merged = cc_common.merge_cc_infos(cc_infos = cc_infos)
-    return InputFiles(
+    s = InputFiles(
         headers = bazel_headers,
         include_dirs = bazel_system_includes,
         libs = bazel_libs,
@@ -739,6 +820,8 @@ def _define_inputs(attrs):
                           cc_info_merged.compilation_context.headers.to_list() +
                           ext_build_dirs,
     )
+    # print(s)
+    return s
 
 # buildifier: disable=function-docstring
 def uniq_list_keep_order(list):
@@ -759,14 +842,20 @@ def _get_headers(compilation_info):
     include_dirs = compilation_info.system_includes.to_list() + \
                    compilation_info.includes.to_list()
 
+    # print(include_dirs)
+    # print(compilation_info.system_includes)
+
     # do not use quote includes, currently they do not contain
     # library-specific information
     include_dirs = collections.uniq(include_dirs)
+    # print("matching headers to")
+    # print(include_dirs)
     headers = []
     for header in compilation_info.headers.to_list():
         path = header.path
         included = False
         for dir_ in include_dirs:
+            # print(path, dir_)
             if path.startswith(dir_):
                 included = True
                 break
@@ -802,6 +891,7 @@ def _extract_libraries(library_to_link):
         library_to_link.static_library,
         library_to_link.pic_static_library,
         library_to_link.dynamic_library,
+        library_to_link.resolved_symlink_dynamic_library,
         library_to_link.interface_library,
     ]
 

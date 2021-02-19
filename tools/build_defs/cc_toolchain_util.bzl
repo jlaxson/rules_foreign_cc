@@ -111,7 +111,7 @@ def _files_map(files_list):
         name_ = _file_name_no_ext(file_.basename)
         value = by_names_map.get(name_)
         if value:
-            fail("Can not have libraries with the same name in the same category")
+            fail("Can not have libraries with the same name in the same category: {} already in {}".format(file_, value))
         by_names_map[name_] = file_
     return by_names_map
 
@@ -257,6 +257,8 @@ def get_tools_info(ctx):
         ctx = ctx,
         cc_toolchain = cc_toolchain,
     )
+
+    # print(feature_configuration)
 
     return CxxToolsInfo(
         cc = cc_common.get_tool_for_action(

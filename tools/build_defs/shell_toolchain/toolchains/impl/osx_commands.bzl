@@ -63,7 +63,7 @@ def copy_dir_contents_to_dir(source, target):
     text = """
 SAVEIFS=$IFS
 IFS=$'\n'
-local children=($(find "$1" -maxdepth 1 -mindepth 1))
+local children=($(find "$1/" -maxdepth 1 -mindepth 1))
 IFS=$SAVEIFS
 local target="$2"
 mkdir -p "${target}"
@@ -118,7 +118,7 @@ elif [[ -L "$1" && ! -d "$1" ]]; then
 elif [[ -d "$1" ]]; then
   SAVEIFS=$IFS
   IFS=$'\n'
-  local children=($(find "$1" -maxdepth 1 -mindepth 1))
+  local children=($(find "$1/" -maxdepth 1 -mindepth 1))
   IFS=$SAVEIFS
   local dirname=$(basename "$1")
   mkdir -p "$target/$dirname"
